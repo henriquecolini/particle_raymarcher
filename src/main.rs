@@ -4,7 +4,8 @@ use winit::event_loop::{ControlFlow, EventLoop};
 mod app;
 mod camera;
 mod particle;
-mod size;
+mod screen;
+mod sdf;
 mod state;
 mod time;
 

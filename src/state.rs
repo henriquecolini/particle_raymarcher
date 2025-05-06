@@ -1,11 +1,10 @@
 use crate::{
-	camera::{self, Camera, CameraBindingData},
-	particle::{self, ParticleBindingData},
-	size::{self, SizeBindingData},
-	time::{self, TimeBindingData},
+	camera::{self, Camera},
+	screen, sdf, time,
 };
 use glam::{Vec2, Vec3};
 use std::{collections::HashSet, sync::Arc};
+use wgpu::{Extent3d, TexelCopyBufferLayout, TexelCopyTextureInfo};
 use winit::{
 	dpi::PhysicalPosition,
 	event::{ElementState, RawKeyEvent},
@@ -21,13 +20,10 @@ pub struct State {
 	surface: wgpu::Surface<'static>,
 	surface_format: wgpu::TextureFormat,
 	pipeline: wgpu::RenderPipeline,
-	size_buffer: wgpu::Buffer,
-	size_bind_group: wgpu::BindGroup,
+	uniform_group: wgpu::BindGroup,
+	screen_buffer: wgpu::Buffer,
 	time_buffer: wgpu::Buffer,
-	time_bind_group: wgpu::BindGroup,
 	camera_buffer: wgpu::Buffer,
-	camera_bind_group: wgpu::BindGroup,
-	particles_bind_group: wgpu::BindGroup,
 	start_time: std::time::Instant,
 	last_time: std::time::Instant,
 	camera: Camera,
@@ -85,53 +81,78 @@ impl State {
 			.unwrap();
 
 		let size = window.inner_size();
-
 		let surface = instance.create_surface(window.clone()).unwrap();
 		let cap = surface.get_capabilities(&adapter);
 		let surface_format = cap.formats[0];
 
-		let TimeBindingData {
-			time_buffer,
-			time_bind_group_layout,
-			time_bind_group,
-		} = time::TimeBindingData::new(&device);
-
-		let CameraBindingData {
-			camera_buffer,
-			camera_bind_group_layout,
-			camera_bind_group,
-		} = camera::CameraBindingData::new(&device);
-
-		let SizeBindingData {
-			size_buffer,
-			size_bind_group_layout,
-			size_bind_group,
-		} = size::SizeBindingData::new(&device);
-
-		let ParticleBindingData {
-			particles_bind_group_layout,
-			particles_bind_group,
-		} = particle::ParticleBindingData::new(&device, &particle::grid(4, 4, 4));
-
 		let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
 			label: Some("Raymarch Shader"),
-			source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
+			source: wgpu::ShaderSource::Wgsl(
+				std::fs::read_to_string("src/shader.wgsl").unwrap().into(),
+			),
 		});
 
-		let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-			label: Some("Raymarch Layout"),
-			bind_group_layouts: &[
-				&size_bind_group_layout,
-				&time_bind_group_layout,
-				&camera_bind_group_layout,
-				&particles_bind_group_layout,
+		let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+			label: Some("Uniform Layout Group"),
+			entries: &[
+				wgpu::BindGroupLayoutEntry {
+					binding: 0,
+					visibility: wgpu::ShaderStages::FRAGMENT,
+					ty: wgpu::BindingType::Buffer {
+						ty: wgpu::BufferBindingType::Uniform,
+						has_dynamic_offset: false,
+						min_binding_size: None,
+					},
+					count: None,
+				},
+				wgpu::BindGroupLayoutEntry {
+					binding: 1,
+					visibility: wgpu::ShaderStages::FRAGMENT,
+					ty: wgpu::BindingType::Buffer {
+						ty: wgpu::BufferBindingType::Uniform,
+						has_dynamic_offset: false,
+						min_binding_size: None,
+					},
+					count: None,
+				},
+				wgpu::BindGroupLayoutEntry {
+					binding: 2,
+					visibility: wgpu::ShaderStages::FRAGMENT,
+					ty: wgpu::BindingType::Buffer {
+						ty: wgpu::BufferBindingType::Uniform,
+						has_dynamic_offset: false,
+						min_binding_size: None,
+					},
+					count: None,
+				},
+				wgpu::BindGroupLayoutEntry {
+					binding: 3,
+					visibility: wgpu::ShaderStages::FRAGMENT,
+					ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+					count: None,
+				},
+				wgpu::BindGroupLayoutEntry {
+					binding: 4,
+					visibility: wgpu::ShaderStages::FRAGMENT,
+					ty: wgpu::BindingType::Texture {
+						sample_type: wgpu::TextureSampleType::Float { filterable: false },
+						view_dimension: wgpu::TextureViewDimension::D3,
+						multisampled: false,
+					},
+					count: None,
+				},
 			],
+		});
+
+		let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+			label: Some("Raymarch Pipeline Layout"),
+			bind_group_layouts: &[&layout],
 			push_constant_ranges: &[],
 		});
 
 		let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
 			label: Some("Raymarch Pipeline"),
-			layout: Some(&layout),
+			layout: Some(&pipeline_layout),
 			vertex: wgpu::VertexState {
 				module: &shader,
 				entry_point: Some("vs_main"),
@@ -155,6 +176,59 @@ impl State {
 			cache: Default::default(),
 		});
 
+		let screen_buffer = screen::create_buffer(&device);
+		let camera_buffer = camera::create_buffer(&device);
+		let time_buffer = time::create_buffer(&device);
+		let sdf_sampler = sdf::create_sampler(&device);
+		let sdf_texture = sdf::create_texture(&device);
+
+		let uniform_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+			label: Some("Uniform Group"),
+			layout: &layout,
+			entries: &[
+				wgpu::BindGroupEntry {
+					binding: 0,
+					resource: screen_buffer.as_entire_binding(),
+				},
+				wgpu::BindGroupEntry {
+					binding: 1,
+					resource: camera_buffer.as_entire_binding(),
+				},
+				wgpu::BindGroupEntry {
+					binding: 2,
+					resource: time_buffer.as_entire_binding(),
+				},
+				wgpu::BindGroupEntry {
+					binding: 3,
+					resource: wgpu::BindingResource::Sampler(&sdf_sampler),
+				},
+				wgpu::BindGroupEntry {
+					binding: 4,
+					resource: wgpu::BindingResource::TextureView(&sdf::create_view(&sdf_texture)),
+				},
+			],
+		});
+
+		queue.write_texture(
+			TexelCopyTextureInfo {
+				texture: &sdf_texture,
+				mip_level: 0,
+				origin: wgpu::Origin3d { x: 0, y: 0, z: 0 },
+				aspect: wgpu::TextureAspect::All,
+			},
+			bytemuck::cast_slice(&vec![0.0f32; 128 * 128 * 128]),
+			TexelCopyBufferLayout {
+				offset: 0,
+				bytes_per_row: Some(4 * 128),
+				rows_per_image: Some(128),
+			},
+			Extent3d {
+				width: 128,
+				height: 128,
+				depth_or_array_layers: 128,
+			},
+		);
+
 		let camera = Camera::new();
 
 		let state = State {
@@ -165,13 +239,10 @@ impl State {
 			surface,
 			surface_format,
 			pipeline,
-			size_buffer,
-			size_bind_group,
+			uniform_group,
+			screen_buffer,
 			time_buffer,
-			time_bind_group,
 			camera_buffer,
-			camera_bind_group,
-			particles_bind_group,
 			start_time: std::time::Instant::now(),
 			last_time: std::time::Instant::now(),
 			input: Default::default(),
@@ -274,9 +345,9 @@ impl State {
 			});
 
 			self.queue.write_buffer(
-				&self.size_buffer,
+				&self.screen_buffer,
 				0,
-				size::SizeUniform::new(self.window.inner_size()).bytes(),
+				screen::ScreenUniform::new(self.window.inner_size()).bytes(),
 			);
 
 			self.queue.write_buffer(
@@ -288,10 +359,7 @@ impl State {
 			self.queue
 				.write_buffer(&self.camera_buffer, 0, self.camera.uniform().bytes());
 
-			pass.set_bind_group(0, &self.size_bind_group, &[]);
-			pass.set_bind_group(1, &self.time_bind_group, &[]);
-			pass.set_bind_group(2, &self.camera_bind_group, &[]);
-			pass.set_bind_group(3, &self.particles_bind_group, &[]);
+			pass.set_bind_group(0, &self.uniform_group, &[]);
 			pass.set_pipeline(&self.pipeline);
 			pass.draw(0..6, 0..1);
 		}

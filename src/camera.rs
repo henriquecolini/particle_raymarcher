@@ -19,12 +19,6 @@ pub struct CameraUniform {
 	_pad2: f32,
 }
 
-pub struct CameraBindingData {
-	pub camera_buffer: wgpu::Buffer,
-	pub camera_bind_group_layout: wgpu::BindGroupLayout,
-	pub camera_bind_group: wgpu::BindGroup,
-}
-
 impl Camera {
 	pub fn new() -> Self {
 		Self {
@@ -79,42 +73,10 @@ impl CameraUniform {
 	}
 }
 
-impl CameraBindingData {
-	pub fn new(device: &wgpu::Device) -> Self {
-		let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-			label: Some("Camera Buffer"),
-			contents: bytemuck::bytes_of(&CameraUniform::default()),
-			usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-		});
-
-		let camera_bind_group_layout =
-			device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-				label: Some("Camera Bind Group Layout"),
-				entries: &[wgpu::BindGroupLayoutEntry {
-					binding: 0,
-					visibility: wgpu::ShaderStages::FRAGMENT,
-					ty: wgpu::BindingType::Buffer {
-						ty: wgpu::BufferBindingType::Uniform,
-						has_dynamic_offset: false,
-						min_binding_size: None,
-					},
-					count: None,
-				}],
-			});
-
-		let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-			label: Some("Camera Bind Group"),
-			layout: &camera_bind_group_layout,
-			entries: &[wgpu::BindGroupEntry {
-				binding: 0,
-				resource: camera_buffer.as_entire_binding(),
-			}],
-		});
-
-		Self {
-			camera_buffer,
-			camera_bind_group_layout,
-			camera_bind_group,
-		}
-	}
+pub fn create_buffer(device: &wgpu::Device) -> wgpu::Buffer {
+	device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+		label: Some("Camera Buffer"),
+		contents: bytemuck::bytes_of(&CameraUniform::default()),
+		usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+	})
 }
