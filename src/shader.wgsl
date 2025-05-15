@@ -1,6 +1,5 @@
-struct Size {
-    width: f32,
-    height: f32
+struct Screen {
+    size: vec2<f32>
 }
 
 struct Time {
@@ -9,18 +8,17 @@ struct Time {
 
 struct Camera {
     position: vec3<f32>,
-    _pad: f32,
-    direction: vec3<f32>,
-    _pad2: f32,
+    _p1: f32,
+    right: vec3<f32>,
+    _p2: f32,
+    up: vec3<f32>,
+    _p3: f32,
+    forward: vec3<f32>,
+    _p4: f32,
 };
 
-struct Particle {
-    position: vec3<f32>,
-    radius: f32
-}
-
 @group(0) @binding(0)
-var<uniform> u_screen: Size;
+var<uniform> u_screen: Screen;
 
 @group(0) @binding(1)
 var<uniform> u_camera: Camera;
@@ -32,7 +30,7 @@ var<uniform> u_time: Time;
 var sdf_sampler: sampler;
 
 @group(0) @binding(4)
-var sdf_tex: texture_3d<f32>;
+var sdf_tex_read: texture_3d<f32>;
 
 // @group(3) @binding(0)
 // var<storage, read> u_particles: array<Particle>;
@@ -45,29 +43,17 @@ const MIN_DIST_TO_SDF = 0.001;
 const MAX_DIST_TO_TRAVEL = 64.0;
 const SUN_DIR = vec3(-1.0,-1.0,1.0) / 1.73205080757;
 
-fn smooth_min(d1: f32, d2: f32, k: f32) -> f32 {
-    let h = clamp(0.5 + 0.5 * (d2 - d1) / k, 0.0, 1.0);
-    return mix(d2, d1, h) - k * h * (1.0 - h);
+fn sdf_box(p: vec3<f32>, size: vec3<f32>) -> f32 {
+    let q = abs(p-size/2) - size/2;
+    return length(max(q,vec3(0.0,0.0,0.0))) + min(max(q.x,max(q.y,q.z)),0.0);
 }
 
-fn sdf_sphere(p: vec3<f32>, c: vec3<f32>, r: f32) -> f32 {
-    return length(p - c) - r;
-}
-
-fn sdf(o: vec3<f32>) -> f32 {
-    return sdf_sphere(o, vec3(0.0,0.0,0.0), 1.0);
-    // var sm = MAX_DIST_TO_TRAVEL;
-    // for (var i: u32 = 0; i < u_particles_len; i++) {
-    //     sm = smooth_min(
-    //         sm,
-    //         sdf_sphere(
-    //             o,
-    //             (sin(u_time.s)+1.0) * u_particles[i].position,
-    //             u_particles[i].radius
-    //         ),
-    //         0.5);
-    // }
-    // return sm;
+fn sdf(p: vec3<f32>) -> f32 {
+    var total = 0.0;
+    if p.x < 0 || p.y < 0 || p.z < 0 || p.x > 1 || p.y > 1 || p.z > 1 {
+        total += sdf_box(p, vec3(1.0,1.0,1.0));
+    }
+    return total + textureSample(sdf_tex_read, sdf_sampler, p).r;
 }
 
 fn raymarch(orig: vec3<f32>, dir: vec3<f32>) -> f32 {
@@ -110,36 +96,38 @@ fn sky_color_diffuse(n: vec3<f32>) -> vec3<f32> {
         saturate(((n.y/0.5) + 1.0)/2.0)
     );
 }
-
 @vertex
 fn vs_main(@builtin(vertex_index) index: u32) -> @builtin(position) vec4<f32> {
     var pos = array(
         vec2(-1.0, -1.0), vec2( 1.0, -1.0), vec2(-1.0,  1.0),
         vec2(-1.0,  1.0), vec2( 1.0, -1.0), vec2( 1.0,  1.0),
     );
-    return vec4(pos[index], 0.0, 1.0);
+    return vec4(pos[index], 0.0, 1);
+}
+
+fn clip_to_uv(clip_pos: vec2<f32>) -> vec2<f32> {
+    return (clip_pos / u_screen.size) * vec2(1.0,-1.0) + vec2(0.0, 1.0);
 }
 
 @fragment
-fn fs_main(@builtin(position) frag_coord: vec4<f32>) -> @location(0) vec4<f32> {
-    let resolution = vec2(u_screen.width, u_screen.height); // pass as uniform if needed
-    var uv = (frag_coord.xy / resolution) * 2.0 - vec2(1.0, 1.0);
-    let aspect = resolution.x / resolution.y;
+fn fs_main(@builtin(position) clip_pos: vec4<f32>) -> @location(0) vec4<f32> {
+    // var uv = clip_to_uv(clip_pos.xy);
+    // var value = textureSample(sdf_tex_read, sdf_sampler, vec3(uv, 0.5));
+    // return vec4(value);
 
-    uv = -uv;
 
-    let forward = normalize(u_camera.direction); // already in your coordinate space
-    let up = vec3(0.0, 1.0, 0.0); // Y-up
-    let right = normalize(cross(forward, up)); // X right
-    let camera_up = cross(right, forward);     // recomputed up (orthogonalized)
+    var uv = clip_to_uv(clip_pos.xy) * 2 - vec2(1,1);
+    // return vec4(uv, 0, 1);
+
+    let aspect = u_screen.size.x / u_screen.size.y;
 
     let fov_scale = tan(radians(90.0) * 0.5); // or pass as uniform
 
-    // Build ray direction using Y-up, Z-forward convention
+    // Build ray direction using Y-up, Z-cam_forward convention
     let ray_dir = normalize(
-        forward +
-        uv.x * aspect * fov_scale * right +
-        uv.y * fov_scale * camera_up
+        u_camera.forward +
+        uv.x * aspect * fov_scale * u_camera.right +
+        uv.y * fov_scale * u_camera.up
     );
 
     let ray_origin = u_camera.position;

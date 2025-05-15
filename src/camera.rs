@@ -14,9 +14,13 @@ pub struct Camera {
 #[derive(Debug, Default, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct CameraUniform {
 	position: [f32; 3],
-	_pad: f32,
-	direction: [f32; 3],
-	_pad2: f32,
+	_p1: f32,
+	right: [f32; 3],
+	_p2: f32,
+	up: [f32; 3],
+	_p3: f32,
+	forward: [f32; 3],
+	_p4: f32,
 }
 
 impl Camera {
@@ -46,9 +50,14 @@ impl Camera {
 		.normalize_or_zero()
 	}
 	pub fn uniform(&self) -> CameraUniform {
+		let forward = self.look_dir();
+		let right = self.right_dir();
+		let up = forward.cross(right);
 		CameraUniform {
 			position: self.position.to_array(),
-			direction: self.look_dir().to_array(),
+			right: right.to_array(),
+			up: up.to_array(),
+			forward: forward.to_array(),
 			..Default::default()
 		}
 	}

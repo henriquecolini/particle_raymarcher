@@ -10,6 +10,8 @@ pollster = "0.3"
 env_logger = "0.11.8"
 bytemuck = "1.23.0"
 glam = "0.30.3"
+half = { version = "2.6.0", features = ["bytemuck"] }
+rand = "0.9.1"
 
 [profile.release]
 opt-level = 3

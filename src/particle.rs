@@ -1,38 +1,72 @@
-// use glam::{vec3, Vec3};
-// use wgpu::util::DeviceExt;
+use glam::{vec3, Vec3};
+use rand::Rng;
+use wgpu::util::DeviceExt;
 
-// #[repr(C)]
-// #[derive(Debug, Default, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-// pub struct Particle {
-// 	position: [f32; 3],
-// 	radius: f32,
-// }
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct Particle {
+	position: [f32; 3],
+	radius: f32,
+}
 
 // pub struct ParticleBindingData {
 // 	pub particles_bind_group_layout: wgpu::BindGroupLayout,
 // 	pub particles_bind_group: wgpu::BindGroup,
 // }
 
-// const fn uvec3(x: usize, y: usize, z: usize) -> Vec3 {
-// 	vec3(x as f32, y as f32, z as f32)
-// }
+const fn uvec3(x: usize, y: usize, z: usize) -> Vec3 {
+	vec3(x as f32, y as f32, z as f32)
+}
 
-// pub fn grid(size_x: usize, size_y: usize, size_z: usize) -> Vec<Particle> {
-// 	let mut particles = vec![];
-// 	let middle = uvec3(size_x - 1, size_y - 1, size_z - 1) / 2.0;
+#[allow(unused)]
+pub fn grid(size_x: usize, size_y: usize, size_z: usize) -> Vec<Particle> {
+	let mut particles = vec![];
+	let size = uvec3(size_x, size_y, size_z);
+	for x in 0..size_x {
+		for y in 0..size_y {
+			for z in 0..size_z {
+				let mut position = uvec3(x, y, z);
+				position += vec3(0.5, 0.5, 0.5);
+				position /= size;
+				position -= vec3(0.5, 0.5, 0.5);
+				position *= 0.5;
+				position += vec3(0.5, 0.5, 0.5);
+				let position = position.to_array();
+				particles.push(Particle {
+					position,
+					radius: 0.05,
+				})
+			}
+		}
+	}
+	particles
+}
 
-// 	for x in 0..size_x {
-// 		for y in 0..size_y {
-// 			for z in 0..size_z {
-// 				particles.push(Particle {
-// 					position: (uvec3(x, y, z) - middle).to_array(),
-// 					radius: 1.0,
-// 				})
-// 			}
-// 		}
-// 	}
-// 	particles
-// }
+#[allow(unused)]
+pub fn random(n: usize) -> Vec<Particle> {
+	let mut rng = rand::rng();
+	let mut particles = Vec::with_capacity(n);
+
+	for _ in 0..n {
+		let position = [
+			rng.random_range(0.2..=0.8),
+			rng.random_range(0.2..=0.8),
+			rng.random_range(0.2..=0.8),
+		];
+		let radius = rng.random_range(0.025..=0.05);
+		particles.push(Particle { position, radius });
+	}
+
+	particles
+}
+
+pub fn create_buffer(device: &wgpu::Device) -> wgpu::Buffer {
+	device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+		label: Some("Particle Buffer"),
+		contents: bytemuck::cast_slice(&random(3200)),
+		usage: wgpu::BufferUsages::STORAGE,
+	})
+}
 
 // impl ParticleBindingData {
 // 	pub fn new(device: &wgpu::Device, data: &[Particle]) -> Self {
