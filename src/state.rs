@@ -35,6 +35,10 @@ pub struct State {
 	locked: bool,
 }
 
+const T_WIDTH: u32 = 64;
+const T_HEIGHT: u32 = 64;
+const T_DEPTH: u32 = 256;
+
 #[derive(Default)]
 struct Input {
 	keys: HashSet<KeyCode>,
@@ -81,7 +85,10 @@ impl State {
 			.unwrap();
 		let (device, queue) = adapter
 			.request_device(&wgpu::DeviceDescriptor {
-				required_features: wgpu::Features::TIMESTAMP_QUERY,
+				required_limits: wgpu::Limits {
+					min_storage_buffer_offset_alignment: particle::BUNDLE_SIZE_BYTES,
+					..wgpu::Limits::default()
+				},
 				..Default::default()
 			})
 			.await
@@ -136,6 +143,16 @@ impl State {
 						sample_type: wgpu::TextureSampleType::Float { filterable: false },
 						view_dimension: wgpu::TextureViewDimension::D3,
 						multisampled: false,
+					},
+					count: None,
+				},
+				wgpu::BindGroupLayoutEntry {
+					binding: 3,
+					visibility: wgpu::ShaderStages::COMPUTE,
+					ty: wgpu::BindingType::Buffer {
+						ty: wgpu::BufferBindingType::Uniform,
+						has_dynamic_offset: false,
+						min_binding_size: None,
 					},
 					count: None,
 				},
@@ -254,18 +271,14 @@ impl State {
 			cache: Default::default(),
 		});
 
-		let tex_width = 64;
-		let tex_height = 64;
-		let tex_depth = 64;
-
 		let screen_buffer = screen::create_buffer(&device);
 		let camera_buffer = camera::create_buffer(&device);
 		let time_buffer = time::create_buffer(&device);
 		let particles_buffer = particle::create_buffer(&device);
 
-		let sdf_tmp_texture = sdf::create_texture(&device, tex_width, tex_height, tex_depth);
+		let sdf_tmp_texture = sdf::create_texture(&device, T_WIDTH, T_HEIGHT, T_DEPTH);
 		let sdf_tmp_view = sdf::create_view(&sdf_tmp_texture);
-		let sdf_texture = sdf::create_texture(&device, tex_width, tex_height, tex_depth);
+		let sdf_texture = sdf::create_texture(&device, T_WIDTH, T_HEIGHT, T_DEPTH);
 		let sdf_view = sdf::create_view(&sdf_texture);
 		let sdf_sampler = sdf::create_sampler(&device);
 
@@ -278,7 +291,7 @@ impl State {
 					resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
 						buffer: &particles_buffer,
 						offset: 0,
-						size: Some(NonZero::new(256).unwrap()),
+						size: Some(NonZero::new(particle::BUNDLE_SIZE_BYTES as u64).unwrap()),
 					}),
 				},
 				wgpu::BindGroupEntry {
@@ -288,6 +301,10 @@ impl State {
 				wgpu::BindGroupEntry {
 					binding: 2,
 					resource: wgpu::BindingResource::TextureView(&sdf_view),
+				},
+				wgpu::BindGroupEntry {
+					binding: 3,
+					resource: camera_buffer.as_entire_binding(),
 				},
 			],
 		});
@@ -301,7 +318,7 @@ impl State {
 					resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
 						buffer: &particles_buffer,
 						offset: 0,
-						size: Some(NonZero::new(256).unwrap()),
+						size: Some(NonZero::new(particle::BUNDLE_SIZE_BYTES as u64).unwrap()),
 					}),
 				},
 				wgpu::BindGroupEntry {
@@ -311,6 +328,10 @@ impl State {
 				wgpu::BindGroupEntry {
 					binding: 2,
 					resource: wgpu::BindingResource::TextureView(&sdf_tmp_view),
+				},
+				wgpu::BindGroupEntry {
+					binding: 3,
+					resource: camera_buffer.as_entire_binding(),
 				},
 			],
 		});
@@ -442,8 +463,10 @@ impl State {
 		} else {
 			Vec2::ZERO
 		};
+		let inner_size = self.window.inner_size();
 		self.camera
 			.update(self.input.dir(), mouse_delta, time_delta.as_secs_f32());
+		self.camera.aspect = inner_size.width as f32 / inner_size.height as f32;
 		self.input.mouse_delta = Vec2::ZERO;
 		self.last_time = now_time;
 	}
@@ -486,10 +509,10 @@ impl State {
 				timestamp_writes: None,
 			});
 
-			let (wg_x, wg_y, wg_z) = (8, 4, 2);
-			let dispatch_x = (64 + wg_x - 1) / wg_x;
-			let dispatch_y = (64 + wg_y - 1) / wg_y;
-			let dispatch_z = (64 + wg_z - 1) / wg_z;
+			let (wg_x, wg_y, wg_z) = (8, 4, 4);
+			let dispatch_x = (T_WIDTH + wg_x - 1) / wg_x;
+			let dispatch_y = (T_HEIGHT + wg_y - 1) / wg_y;
+			let dispatch_z = (T_DEPTH + wg_z - 1) / wg_z;
 
 			pass.set_pipeline(&self.compute_clear_pipeline);
 			pass.set_bind_group(0, &self.compute_write_main_group, &[0]);
@@ -508,7 +531,7 @@ impl State {
 					pass.dispatch_workgroups(dispatch_x, dispatch_y, dispatch_z);
 				}
 				mode = !mode;
-				offset += 256;
+				offset += particle::BUNDLE_SIZE_BYTES;
 			}
 		}
 

@@ -2,6 +2,9 @@ use glam::{vec3, Vec3};
 use rand::Rng;
 use wgpu::util::DeviceExt;
 
+pub const BUNDLE_SIZE: u32 = 32;
+pub const BUNDLE_SIZE_BYTES: u32 = std::mem::size_of::<Particle>() as u32 * BUNDLE_SIZE;
+
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Particle {
@@ -9,18 +12,19 @@ pub struct Particle {
 	radius: f32,
 }
 
-// pub struct ParticleBindingData {
-// 	pub particles_bind_group_layout: wgpu::BindGroupLayout,
-// 	pub particles_bind_group: wgpu::BindGroup,
-// }
-
 const fn uvec3(x: usize, y: usize, z: usize) -> Vec3 {
 	vec3(x as f32, y as f32, z as f32)
+}
+
+pub fn bundled(particles: &[Particle]) -> &[Particle] {
+	const N: usize = BUNDLE_SIZE as usize;
+	&particles[0..((particles.len() / N) * N)]
 }
 
 #[allow(unused)]
 pub fn grid(size_x: usize, size_y: usize, size_z: usize) -> Vec<Particle> {
 	let mut particles = vec![];
+	let mut rng = rand::rng();
 	let size = uvec3(size_x, size_y, size_z);
 	for x in 0..size_x {
 		for y in 0..size_y {
@@ -29,12 +33,11 @@ pub fn grid(size_x: usize, size_y: usize, size_z: usize) -> Vec<Particle> {
 				position += vec3(0.5, 0.5, 0.5);
 				position /= size;
 				position -= vec3(0.5, 0.5, 0.5);
-				position *= 0.5;
-				position += vec3(0.5, 0.5, 0.5);
 				let position = position.to_array();
 				particles.push(Particle {
 					position,
-					radius: 0.05,
+					radius: rng.random_range(0.05..=0.1),
+					..Default::default()
 				})
 			}
 		}
@@ -54,7 +57,11 @@ pub fn random(n: usize) -> Vec<Particle> {
 			rng.random_range(0.2..=0.8),
 		];
 		let radius = rng.random_range(0.025..=0.05);
-		particles.push(Particle { position, radius });
+		particles.push(Particle {
+			position,
+			radius,
+			..Default::default()
+		});
 	}
 
 	particles
@@ -63,7 +70,7 @@ pub fn random(n: usize) -> Vec<Particle> {
 pub fn create_buffer(device: &wgpu::Device) -> wgpu::Buffer {
 	device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
 		label: Some("Particle Buffer"),
-		contents: bytemuck::cast_slice(&random(3200)),
+		contents: bytemuck::cast_slice(bundled(&grid(8, 8, 8))),
 		usage: wgpu::BufferUsages::STORAGE,
 	})
 }

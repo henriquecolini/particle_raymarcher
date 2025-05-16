@@ -4,16 +4,15 @@ use winit::dpi::PhysicalSize;
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct ScreenUniform {
-	width: f32,
-	height: f32,
+	size: [f32; 2],
 }
 
 impl ScreenUniform {
 	pub fn new(size: PhysicalSize<u32>) -> Self {
-		Self {
-			width: size.width as f32,
-			height: size.height as f32,
-		}
+		let width = size.width as f32;
+		let height = size.height as f32;
+		let size = [width, height];
+		Self { size }
 	}
 	pub fn bytes(&self) -> &[u8] {
 		bytemuck::bytes_of(self)

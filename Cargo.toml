@@ -9,7 +9,7 @@ winit = "0.30.8"
 pollster = "0.3"
 env_logger = "0.11.8"
 bytemuck = "1.23.0"
-glam = "0.30.3"
+glam = { version = "0.30.3", features = ["glam-assert"] }
 half = { version = "2.6.0", features = ["bytemuck"] }
 rand = "0.9.1"
 

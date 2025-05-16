@@ -1,20 +1,23 @@
 struct Screen {
-    size: vec2<f32>
+    size: vec2<f32>,
 }
 
 struct Time {
-    s: f32
+    s: f32,
 }
 
 struct Camera {
     position: vec3<f32>,
-    _p1: f32,
+    aspect: f32,
     right: vec3<f32>,
-    _p2: f32,
+    fov: f32,
     up: vec3<f32>,
-    _p3: f32,
+    fov_scale: f32,
     forward: vec3<f32>,
-    _p4: f32,
+    proj: mat4x4<f32>,
+    view: mat4x4<f32>,
+    inv_proj: mat4x4<f32>,
+    inv_view: mat4x4<f32>,
 };
 
 @group(0) @binding(0)
@@ -39,7 +42,7 @@ var sdf_tex_read: texture_3d<f32>;
 // var<uniform> u_particles_len: u32;
 
 const NUM_OF_STEPS = 128;
-const MIN_DIST_TO_SDF = 0.001;
+const MIN_DIST_TO_SDF = 0.005;
 const MAX_DIST_TO_TRAVEL = 64.0;
 const SUN_DIR = vec3(-1.0,-1.0,1.0) / 1.73205080757;
 
@@ -48,12 +51,55 @@ fn sdf_box(p: vec3<f32>, size: vec3<f32>) -> f32 {
     return length(max(q,vec3(0.0,0.0,0.0))) + min(max(q.x,max(q.y,q.z)),0.0);
 }
 
+fn world_to_screen(world_pos: vec3<f32>) -> vec3<f32> {
+    // Transform world → view space
+    let view_pos_hom = u_camera.view * vec4(world_pos, 1.0);
+    let view_pos = view_pos_hom.xyz / view_pos_hom.w;
+
+    // Transform view → clip space (applies projection)
+    let clip_pos = u_camera.proj * vec4(view_pos, 1.0);
+    let ndc = clip_pos.xyz / clip_pos.w;
+
+    let screen_pos = vec3(
+        ndc.x * 0.5 + 0.5,
+        ndc.y * 0.5 + 0.5,
+        ndc.z
+    );
+
+    return screen_pos;
+}
+
+fn screen_to_world(pos: vec3<f32>) -> vec3<f32> {
+
+    // Converts normalized screen space to normalized device space
+    let ndc = vec3(
+        pos.x * 2.0 - 1.0,
+        pos.y * 2.0 - 1.0,
+        pos.z
+    );
+    
+    // Reverts the projection matrix
+    let view_pos_hom = u_camera.inv_proj * vec4(ndc, 1.0);
+    let view_pos    = view_pos_hom.xyz / view_pos_hom.w;
+
+    // Reverts the view matrix
+    let world_pos_hom = u_camera.inv_view * vec4(view_pos, 1.0);
+    let world_pos = world_pos_hom.xyz / world_pos_hom.w;
+
+    return world_pos;
+}
+
 fn sdf(p: vec3<f32>) -> f32 {
-    var total = 0.0;
-    if p.x < 0 || p.y < 0 || p.z < 0 || p.x > 1 || p.y > 1 || p.z > 1 {
-        total += sdf_box(p, vec3(1.0,1.0,1.0));
+    let norm = world_to_screen(p);
+    if norm.z > 1 {
+        return MAX_DIST_TO_TRAVEL;
     }
-    return total + textureSample(sdf_tex_read, sdf_sampler, p).r;
+    return textureSample(sdf_tex_read, sdf_sampler, norm).r;
+    // var total = 0.0;
+    // if p.x < 0 || p.y < 0 || p.z < 0 || p.x > 1 || p.y > 1 || p.z > 1 {
+    //     total += sdf_box(p, vec3(1.0,1.0,1.0));
+    // }
+    // return total + textureSample(sdf_tex_read, sdf_sampler, p).r;
 }
 
 fn raymarch(orig: vec3<f32>, dir: vec3<f32>) -> f32 {
@@ -61,10 +107,10 @@ fn raymarch(orig: vec3<f32>, dir: vec3<f32>) -> f32 {
     for (var i = 0; i < NUM_OF_STEPS; i++) {
         let p = orig + dist * dir;
         let d = sdf(p);
+        dist += d;
         if d < MIN_DIST_TO_SDF {
             break;
         }
-        dist += d;
         if dist > MAX_DIST_TO_TRAVEL {
             break;
         }
@@ -105,32 +151,29 @@ fn vs_main(@builtin(vertex_index) index: u32) -> @builtin(position) vec4<f32> {
     return vec4(pos[index], 0.0, 1);
 }
 
-fn clip_to_uv(clip_pos: vec2<f32>) -> vec2<f32> {
-    return (clip_pos / u_screen.size) * vec2(1.0,-1.0) + vec2(0.0, 1.0);
+fn screen_to_uv(screen_pos: vec2<f32>) -> vec2<f32> {
+    let normalized_pos_yn = screen_pos / u_screen.size;
+    let normalized_pos_yp = vec2(normalized_pos_yn.x, 1-normalized_pos_yn.y);
+    return normalized_pos_yp;
+}
+
+fn screen_to_ndc(screen_pos: vec2<f32>) -> vec2<f32> {
+    let normalized_pos_yn = screen_pos / u_screen.size;
+    let normalized_pos_yp = vec2(normalized_pos_yn.x, 1-normalized_pos_yn.y);
+    let ndc = normalized_pos_yp * 2 - vec2(1,1);
+    return ndc;
 }
 
 @fragment
-fn fs_main(@builtin(position) clip_pos: vec4<f32>) -> @location(0) vec4<f32> {
-    // var uv = clip_to_uv(clip_pos.xy);
-    // var value = textureSample(sdf_tex_read, sdf_sampler, vec3(uv, 0.5));
-    // return vec4(value);
+fn fs_main(@builtin(position) screen_pos: vec4<f32>) -> @location(0) vec4<f32> {
 
+    var uv = screen_to_uv(screen_pos.xy);
+    var near = screen_to_world(vec3(uv,0));
+    var far = screen_to_world(vec3(uv,1));
 
-    var uv = clip_to_uv(clip_pos.xy) * 2 - vec2(1,1);
-    // return vec4(uv, 0, 1);
+    let ray_origin = near;
+    let ray_dir = normalize(far - near);
 
-    let aspect = u_screen.size.x / u_screen.size.y;
-
-    let fov_scale = tan(radians(90.0) * 0.5); // or pass as uniform
-
-    // Build ray direction using Y-up, Z-cam_forward convention
-    let ray_dir = normalize(
-        u_camera.forward +
-        uv.x * aspect * fov_scale * u_camera.right +
-        uv.y * fov_scale * u_camera.up
-    );
-
-    let ray_origin = u_camera.position;
     let dist = raymarch(ray_origin, ray_dir);
 
     var color = vec3<f32>();

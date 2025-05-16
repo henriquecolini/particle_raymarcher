@@ -1,10 +1,15 @@
-use std::f32::consts::{PI, TAU};
+use std::f32::{
+	self,
+	consts::{PI, TAU},
+};
 
-use glam::{Vec2, Vec3};
+use glam::{Mat4, Vec2, Vec3};
 use wgpu::util::DeviceExt;
 
 #[derive(Debug, Default)]
 pub struct Camera {
+	pub aspect: f32,
+	pub fov: f32,
 	pub position: Vec3,
 	pub yaw: f32,
 	pub pitch: f32,
@@ -14,13 +19,16 @@ pub struct Camera {
 #[derive(Debug, Default, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct CameraUniform {
 	position: [f32; 3],
-	_p1: f32,
+	aspect: f32,
 	right: [f32; 3],
-	_p2: f32,
+	fov: f32,
 	up: [f32; 3],
-	_p3: f32,
-	forward: [f32; 3],
-	_p4: f32,
+	fov_scale: f32,
+	forward: [f32; 4],
+	proj: [f32; 16],
+	view: [f32; 16],
+	inv_proj: [f32; 16],
+	inv_view: [f32; 16],
 }
 
 impl Camera {
@@ -29,8 +37,10 @@ impl Camera {
 			position: Vec3 {
 				x: 0.0,
 				y: 0.0,
-				z: -3.0,
+				z: -5.0,
 			},
+			aspect: 1.0,
+			fov: (60.0f32).to_radians(),
 			..Default::default()
 		}
 	}
@@ -49,16 +59,33 @@ impl Camera {
 		}
 		.normalize_or_zero()
 	}
+	pub fn view_matrix(&self) -> Mat4 {
+		let forward = self.look_dir();
+		let right = self.right_dir();
+		let up = forward.cross(right);
+		Mat4::look_to_lh(self.position, forward, up)
+	}
+	pub fn projection_matrix(&self) -> Mat4 {
+		Mat4::perspective_lh(self.fov, self.aspect, 0.05, 20.0)
+	}
 	pub fn uniform(&self) -> CameraUniform {
 		let forward = self.look_dir();
 		let right = self.right_dir();
 		let up = forward.cross(right);
+		let proj = self.projection_matrix();
+		let view = self.view_matrix();
 		CameraUniform {
+			aspect: self.aspect,
+			fov: self.fov,
+			fov_scale: (self.fov / 2.0).tan(),
 			position: self.position.to_array(),
 			right: right.to_array(),
 			up: up.to_array(),
-			forward: forward.to_array(),
-			..Default::default()
+			forward: forward.extend(1.0).to_array(),
+			proj: proj.to_cols_array(),
+			view: view.to_cols_array(),
+			inv_proj: proj.inverse().to_cols_array(),
+			inv_view: view.inverse().to_cols_array(),
 		}
 	}
 

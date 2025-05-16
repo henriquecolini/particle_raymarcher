@@ -3,6 +3,7 @@ use std::sync::Arc;
 use crate::state::State;
 use winit::{
 	application::ApplicationHandler,
+	dpi::PhysicalSize,
 	event::{MouseButton, WindowEvent},
 	event_loop::ActiveEventLoop,
 	window::{Window, WindowId},
@@ -17,7 +18,9 @@ impl ApplicationHandler for App {
 	fn resumed(&mut self, event_loop: &ActiveEventLoop) {
 		let window = Arc::new(
 			event_loop
-				.create_window(Window::default_attributes())
+				.create_window(
+					Window::default_attributes().with_inner_size(PhysicalSize::new(600, 600)),
+				)
 				.unwrap(),
 		);
 
