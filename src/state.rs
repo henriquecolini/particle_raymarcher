@@ -24,6 +24,7 @@ pub struct State {
 	compute_write_tmp_group: wgpu::BindGroup,
 	compute_write_main_group: wgpu::BindGroup,
 	render_group: wgpu::BindGroup,
+	particles: Box<[particle::Particle]>,
 	particles_buffer: wgpu::Buffer,
 	screen_buffer: wgpu::Buffer,
 	time_buffer: wgpu::Buffer,
@@ -37,7 +38,7 @@ pub struct State {
 
 const T_WIDTH: u32 = 64;
 const T_HEIGHT: u32 = 64;
-const T_DEPTH: u32 = 256;
+const T_DEPTH: u32 = 128;
 
 #[derive(Default)]
 struct Input {
@@ -271,10 +272,13 @@ impl State {
 			cache: Default::default(),
 		});
 
+		let particles =
+			particle::into_bundled(particle::wave(32, 32, 6.0, 6.0, 0.5, 0.2, 0.4, 0.4));
+
 		let screen_buffer = screen::create_buffer(&device);
 		let camera_buffer = camera::create_buffer(&device);
 		let time_buffer = time::create_buffer(&device);
-		let particles_buffer = particle::create_buffer(&device);
+		let particles_buffer = particle::create_buffer(&device, &particles);
 
 		let sdf_tmp_texture = sdf::create_texture(&device, T_WIDTH, T_HEIGHT, T_DEPTH);
 		let sdf_tmp_view = sdf::create_view(&sdf_tmp_texture);
@@ -378,6 +382,7 @@ impl State {
 			compute_write_tmp_group,
 			compute_write_main_group,
 			render_group,
+			particles,
 			particles_buffer,
 			screen_buffer,
 			time_buffer,
@@ -468,6 +473,24 @@ impl State {
 			.update(self.input.dir(), mouse_delta, time_delta.as_secs_f32());
 		self.camera.aspect = inner_size.width as f32 / inner_size.height as f32;
 		self.input.mouse_delta = Vec2::ZERO;
+		let mut min_dist = None;
+		let mut max_dist = None;
+		for particle in self
+			.particles
+			.iter()
+			.map(|p| self.camera.world_to_view(p.position()).z)
+		{
+			if particle < *min_dist.get_or_insert(particle) {
+				min_dist = Some(particle);
+			}
+			if particle > *max_dist.get_or_insert(particle) {
+				max_dist = Some(particle);
+			}
+		}
+		let min_dist = (min_dist.unwrap_or(0.0) - 1.0).max(0.1);
+		let max_dist = max_dist.unwrap_or(0.0).max(min_dist) + 1.0;
+		self.camera.near = min_dist;
+		self.camera.far = max_dist;
 		self.last_time = now_time;
 	}
 

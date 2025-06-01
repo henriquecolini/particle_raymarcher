@@ -39,7 +39,7 @@ fn smin(d1: f32, d2: f32) -> f32 {
 }
 
 fn sdf_particle(p: vec3<f32>, particle: Particle) -> f32 {
-    return length(p - particle.position) - 0.1;
+    return length(p - particle.position) - particle.radius;
 }
 
 fn sdf(p: vec3<f32>) -> f32 {

@@ -1,4 +1,6 @@
-use glam::{vec3, Vec3};
+use std::f32::consts::TAU;
+
+use glam::{vec2, vec3, Vec2, Vec3};
 use rand::Rng;
 use wgpu::util::DeviceExt;
 
@@ -12,23 +14,43 @@ pub struct Particle {
 	radius: f32,
 }
 
+impl Particle {
+	pub fn position(&self) -> Vec3 {
+		vec3(self.position[0], self.position[1], self.position[2])
+	}
+}
+
 const fn uvec3(x: usize, y: usize, z: usize) -> Vec3 {
 	vec3(x as f32, y as f32, z as f32)
 }
 
-pub fn bundled(particles: &[Particle]) -> &[Particle] {
+const fn uvec2(x: usize, y: usize) -> Vec2 {
+	vec2(x as f32, y as f32)
+}
+
+pub fn as_bundled(particles: &[Particle]) -> &[Particle] {
 	const N: usize = BUNDLE_SIZE as usize;
-	&particles[0..((particles.len() / N) * N)]
+	let max_len = (particles.len() / N) * N;
+	&particles[0..max_len]
+}
+
+pub fn into_bundled(mut particles: Vec<Particle>) -> Box<[Particle]> {
+	const N: usize = BUNDLE_SIZE as usize;
+	let max_len = (particles.len() / N) * N;
+	while particles.len() > max_len {
+		particles.remove(particles.len() - 1);
+	}
+	particles.into_boxed_slice()
 }
 
 #[allow(unused)]
-pub fn grid(size_x: usize, size_y: usize, size_z: usize) -> Vec<Particle> {
+pub fn grid(n_x: usize, n_y: usize, n_z: usize) -> Vec<Particle> {
 	let mut particles = vec![];
 	let mut rng = rand::rng();
-	let size = uvec3(size_x, size_y, size_z);
-	for x in 0..size_x {
-		for y in 0..size_y {
-			for z in 0..size_z {
+	let size = uvec3(n_x, n_y, n_z);
+	for x in 0..n_x {
+		for y in 0..n_y {
+			for z in 0..n_z {
 				let mut position = uvec3(x, y, z);
 				position += vec3(0.5, 0.5, 0.5);
 				position /= size;
@@ -40,6 +62,36 @@ pub fn grid(size_x: usize, size_y: usize, size_z: usize) -> Vec<Particle> {
 					..Default::default()
 				})
 			}
+		}
+	}
+	particles
+}
+
+#[allow(unused)]
+pub fn wave(
+	n_x: usize,
+	n_z: usize,
+	width: f32,
+	depth: f32,
+	amp_x: f32,
+	amp_z: f32,
+	freq_x: f32,
+	freq_z: f32,
+) -> Vec<Particle> {
+	let mut particles = vec![];
+	let size = uvec2(n_x, n_z);
+	for x in 0..n_x {
+		for z in 0..n_z {
+			let Vec2 { x, y } =
+				(((uvec2(x, z) + vec2(0.5, 0.5)) / size) - vec2(0.5, 0.5)) * vec2(width, depth);
+			let z = y;
+			let height = (amp_x * (x * TAU * freq_x).sin()) + (amp_z * (z * TAU * freq_z).sin());
+			let position = (vec3(x, height, z)).to_array();
+			particles.push(Particle {
+				position,
+				radius: 0.1,
+				..Default::default()
+			})
 		}
 	}
 	particles
@@ -67,10 +119,10 @@ pub fn random(n: usize) -> Vec<Particle> {
 	particles
 }
 
-pub fn create_buffer(device: &wgpu::Device) -> wgpu::Buffer {
+pub fn create_buffer(device: &wgpu::Device, particles: &[Particle]) -> wgpu::Buffer {
 	device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
 		label: Some("Particle Buffer"),
-		contents: bytemuck::cast_slice(bundled(&grid(8, 8, 8))),
+		contents: bytemuck::cast_slice(as_bundled(particles)),
 		usage: wgpu::BufferUsages::STORAGE,
 	})
 }

@@ -3,13 +3,15 @@ use std::f32::{
 	consts::{PI, TAU},
 };
 
-use glam::{Mat4, Vec2, Vec3};
+use glam::{vec3, Mat4, Vec2, Vec3};
 use wgpu::util::DeviceExt;
 
 #[derive(Debug, Default)]
 pub struct Camera {
 	pub aspect: f32,
 	pub fov: f32,
+	pub near: f32,
+	pub far: f32,
 	pub position: Vec3,
 	pub yaw: f32,
 	pub pitch: f32,
@@ -40,6 +42,8 @@ impl Camera {
 				z: -5.0,
 			},
 			aspect: 1.0,
+			near: 0.1,
+			far: 1.0,
 			fov: (60.0f32).to_radians(),
 			..Default::default()
 		}
@@ -59,6 +63,11 @@ impl Camera {
 		}
 		.normalize_or_zero()
 	}
+	pub fn world_to_view(&self, world_pos: Vec3) -> Vec3 {
+		let view_pos_hom = self.view_matrix() * world_pos.extend(1.0);
+		let view_pos = view_pos_hom.truncate() / view_pos_hom.w;
+		view_pos
+	}
 	pub fn view_matrix(&self) -> Mat4 {
 		let forward = self.look_dir();
 		let right = self.right_dir();
@@ -66,7 +75,7 @@ impl Camera {
 		Mat4::look_to_lh(self.position, forward, up)
 	}
 	pub fn projection_matrix(&self) -> Mat4 {
-		Mat4::perspective_lh(self.fov, self.aspect, 0.05, 20.0)
+		Mat4::perspective_lh(self.fov, self.aspect, self.near, self.far)
 	}
 	pub fn uniform(&self) -> CameraUniform {
 		let forward = self.look_dir();
