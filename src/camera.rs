@@ -97,8 +97,8 @@ impl Camera {
 		let mov_dir = input_dir.x * self.right_dir()
 			+ input_dir.y * self.forward_dir()
 			+ input_dir.z * Vec3::Y;
-		self.yaw += (mouse_delta.x) * time_delta * 0.2;
-		self.pitch += (-mouse_delta.y) * time_delta * 0.2;
+		self.yaw += mouse_delta.x * 0.002;
+		self.pitch += -mouse_delta.y * 0.002;
 		self.yaw = self.yaw.rem_euclid(TAU);
 		self.pitch = self
 			.pitch
