@@ -55,7 +55,7 @@ fn unit_to_world(pos: vec3<f32>) -> vec3<f32> {
     return pos;
 }
 
-@compute @workgroup_size(8,4,4)
+@compute @workgroup_size(8,8,4)
 fn cs_clear(@builtin(global_invocation_id) id: vec3<u32>) {
     textureStore(
         sdf_tex_write,
@@ -64,7 +64,7 @@ fn cs_clear(@builtin(global_invocation_id) id: vec3<u32>) {
     );
 }
 
-@compute @workgroup_size(8,4,4)
+@compute @workgroup_size(8,8,4)
 fn cs_sdf(@builtin(global_invocation_id) id: vec3<u32>) {
     var value = textureLoad(
         sdf_tex_read,

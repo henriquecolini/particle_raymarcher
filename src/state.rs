@@ -37,7 +37,7 @@ pub struct State {
 
 const T_WIDTH: u32 = 64;
 const T_HEIGHT: u32 = 64;
-const T_DEPTH: u32 = 128;
+const T_DEPTH: u32 = 64;
 
 #[derive(Default)]
 struct Input {
@@ -511,7 +511,7 @@ impl State {
 				timestamp_writes: None,
 			});
 
-			let (wg_x, wg_y, wg_z) = (8, 4, 4);
+			let (wg_x, wg_y, wg_z) = (8, 8, 4);
 			let dispatch_x = (T_WIDTH + wg_x - 1) / wg_x;
 			let dispatch_y = (T_HEIGHT + wg_y - 1) / wg_y;
 			let dispatch_z = (T_DEPTH + wg_z - 1) / wg_z;
