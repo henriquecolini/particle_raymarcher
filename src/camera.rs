@@ -3,7 +3,7 @@ use std::f32::{
 	consts::{PI, TAU},
 };
 
-use glam::{vec3, Mat4, Vec2, Vec3};
+use glam::{Mat4, Vec2, Vec3};
 use wgpu::util::DeviceExt;
 
 #[derive(Debug, Default)]
@@ -62,11 +62,6 @@ impl Camera {
 			z: self.yaw.cos() * self.pitch.cos(),
 		}
 		.normalize_or_zero()
-	}
-	pub fn world_to_view(&self, world_pos: Vec3) -> Vec3 {
-		let view_pos_hom = self.view_matrix() * world_pos.extend(1.0);
-		let view_pos = view_pos_hom.truncate() / view_pos_hom.w;
-		view_pos
 	}
 	pub fn view_matrix(&self) -> Mat4 {
 		let forward = self.look_dir();

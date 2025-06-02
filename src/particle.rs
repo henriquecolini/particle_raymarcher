@@ -14,12 +14,6 @@ pub struct Particle {
 	radius: f32,
 }
 
-impl Particle {
-	pub fn position(&self) -> Vec3 {
-		vec3(self.position[0], self.position[1], self.position[2])
-	}
-}
-
 const fn uvec3(x: usize, y: usize, z: usize) -> Vec3 {
 	vec3(x as f32, y as f32, z as f32)
 }
@@ -54,7 +48,7 @@ pub fn grid(n_x: usize, n_y: usize, n_z: usize) -> Vec<Particle> {
 				let mut position = uvec3(x, y, z);
 				position += vec3(0.5, 0.5, 0.5);
 				position /= size;
-				position -= vec3(0.5, 0.5, 0.5);
+				// position -= vec3(0.5, 0.5, 0.5);
 				let position = position.to_array();
 				particles.push(Particle {
 					position,

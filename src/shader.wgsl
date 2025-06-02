@@ -20,6 +20,11 @@ struct Camera {
     inv_view: mat4x4<f32>,
 };
 
+struct Intersection {
+    is_hit: bool,
+    hit_dist: f32,
+}
+
 @group(0) @binding(0)
 var<uniform> u_screen: Screen;
 
@@ -51,22 +56,8 @@ fn sdf_box(p: vec3<f32>, size: vec3<f32>) -> f32 {
     return length(max(q,vec3(0.0,0.0,0.0))) + min(max(q.x,max(q.y,q.z)),0.0);
 }
 
-fn world_to_screen(world_pos: vec3<f32>) -> vec3<f32> {
-    // Transform world → view space
-    let view_pos_hom = u_camera.view * vec4(world_pos, 1.0);
-    let view_pos = view_pos_hom.xyz / view_pos_hom.w;
-
-    // Transform view → clip space (applies projection)
-    let clip_pos = u_camera.proj * vec4(view_pos, 1.0);
-    let ndc = clip_pos.xyz / clip_pos.w;
-
-    let screen_pos = vec3(
-        ndc.x * 0.5 + 0.5,
-        ndc.y * 0.5 + 0.5,
-        ndc.z
-    );
-
-    return screen_pos;
+fn world_to_ubox(world_pos: vec3<f32>) -> vec3<f32> {
+    return world_pos;
 }
 
 fn screen_to_world(pos: vec3<f32>) -> vec3<f32> {
@@ -90,10 +81,7 @@ fn screen_to_world(pos: vec3<f32>) -> vec3<f32> {
 }
 
 fn sdf(p: vec3<f32>) -> f32 {
-    let norm = world_to_screen(p);
-    if norm.z > 1 {
-        return MAX_DIST_TO_TRAVEL;
-    }
+    let norm = world_to_ubox(p);
     return textureSample(sdf_tex_read, sdf_sampler, norm).r;
     // var total = 0.0;
     // if p.x < 0 || p.y < 0 || p.z < 0 || p.x > 1 || p.y > 1 || p.z > 1 {
@@ -102,17 +90,48 @@ fn sdf(p: vec3<f32>) -> f32 {
     // return total + textureSample(sdf_tex_read, sdf_sampler, p).r;
 }
 
+//https://tavianator.com/2015/ray_box_nan.html
+fn box_intersection(box_min: vec3<f32>, box_max: vec3<f32>, orig: vec3<f32>, dir: vec3<f32>) -> Intersection {
+    var t1 = (box_min.x - orig.x)/dir.x;
+    var t2 = (box_max.x - orig.x)/dir.x;
+
+    var tmin = min(t1, t2);
+    var tmax = max(t1, t2);
+
+    t1 = (box_min.y - orig.y)/dir.y;
+    t2 = (box_max.y - orig.y)/dir.y;
+
+    tmin = max(tmin, min(min(t1, t2), tmax));
+    tmax = min(tmax, max(max(t1, t2), tmin));
+
+    t1 = (box_min.z - orig.z)/dir.z;
+    t2 = (box_max.z - orig.z)/dir.z;
+
+    tmin = max(tmin, min(min(t1, t2), tmax));
+    tmax = min(tmax, max(max(t1, t2), tmin));
+
+    tmin = max(tmin, 0.0);
+
+    return Intersection(tmax > tmin, tmin);
+}
+
+
 fn raymarch(orig: vec3<f32>, dir: vec3<f32>) -> f32 {
-    var dist = 0.0;
+    let inter = box_intersection(vec3(0.0,0.0,0.0),vec3(1.0,1.0,1.0),orig,dir);
+    if !inter.is_hit {
+        return MAX_DIST_TO_TRAVEL;
+    }
+    var dist = inter.hit_dist;
+    var p = orig + dist * dir;
     for (var i = 0; i < NUM_OF_STEPS; i++) {
-        let p = orig + dist * dir;
         let d = sdf(p);
-        dist += d;
         if d < MIN_DIST_TO_SDF {
             break;
         }
-        if dist > MAX_DIST_TO_TRAVEL {
-            break;
+        dist += d;
+        p = orig + dist * dir;
+        if p.x < 0 || p.y < 0 || p.z < 0 || p.x > 1 || p.y > 1 || p.z > 1 {
+            return MAX_DIST_TO_TRAVEL;
         }
     }
     return dist;
@@ -171,7 +190,7 @@ fn fs_main(@builtin(position) screen_pos: vec4<f32>) -> @location(0) vec4<f32> {
     var near = screen_to_world(vec3(uv,0));
     var far = screen_to_world(vec3(uv,1));
 
-    let ray_origin = near;
+    let ray_origin = u_camera.position;
     let ray_dir = normalize(far - near);
 
     let dist = raymarch(ray_origin, ray_dir);
