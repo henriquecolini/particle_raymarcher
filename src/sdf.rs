@@ -9,21 +9,9 @@ pub fn create_texture(device: &wgpu::Device, width: u32, height: u32, depth: u32
 		mip_level_count: 1,
 		sample_count: 1,
 		dimension: wgpu::TextureDimension::D3,
-		format: wgpu::TextureFormat::Rgba16Float,
+		format: wgpu::TextureFormat::R32Float,
 		usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::STORAGE_BINDING,
-		view_formats: &[wgpu::TextureFormat::Rgba16Float],
-	})
-}
-
-pub fn create_sampler(device: &wgpu::Device) -> wgpu::Sampler {
-	device.create_sampler(&wgpu::wgt::SamplerDescriptor {
-		label: Some("SDF sampler"),
-		address_mode_u: wgpu::AddressMode::ClampToEdge,
-		address_mode_v: wgpu::AddressMode::ClampToEdge,
-		address_mode_w: wgpu::AddressMode::ClampToEdge,
-		mag_filter: wgpu::FilterMode::Linear,
-		min_filter: wgpu::FilterMode::Linear,
-		..Default::default()
+		view_formats: &[wgpu::TextureFormat::R32Float],
 	})
 }
 

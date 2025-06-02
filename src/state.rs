@@ -131,7 +131,7 @@ impl State {
 					visibility: wgpu::ShaderStages::COMPUTE,
 					ty: wgpu::BindingType::StorageTexture {
 						access: wgpu::StorageTextureAccess::WriteOnly,
-						format: wgpu::TextureFormat::Rgba16Float,
+						format: wgpu::TextureFormat::R32Float,
 						view_dimension: wgpu::TextureViewDimension::D3,
 					},
 					count: None,
@@ -195,14 +195,8 @@ impl State {
 				wgpu::BindGroupLayoutEntry {
 					binding: 3,
 					visibility: wgpu::ShaderStages::FRAGMENT,
-					ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-					count: None,
-				},
-				wgpu::BindGroupLayoutEntry {
-					binding: 4,
-					visibility: wgpu::ShaderStages::FRAGMENT,
 					ty: wgpu::BindingType::Texture {
-						sample_type: wgpu::TextureSampleType::Float { filterable: true },
+						sample_type: wgpu::TextureSampleType::Float { filterable: false },
 						view_dimension: wgpu::TextureViewDimension::D3,
 						multisampled: false,
 					},
@@ -288,7 +282,6 @@ impl State {
 		let sdf_tmp_view = sdf::create_view(&sdf_tmp_texture);
 		let sdf_texture = sdf::create_texture(&device, T_WIDTH, T_HEIGHT, T_DEPTH);
 		let sdf_view = sdf::create_view(&sdf_texture);
-		let sdf_sampler = sdf::create_sampler(&device);
 
 		let compute_write_tmp_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
 			label: Some("Compute Group (Write to Temp)"),
@@ -362,10 +355,6 @@ impl State {
 				},
 				wgpu::BindGroupEntry {
 					binding: 3,
-					resource: wgpu::BindingResource::Sampler(&sdf_sampler),
-				},
-				wgpu::BindGroupEntry {
-					binding: 4,
 					resource: wgpu::BindingResource::TextureView(&sdf_view),
 				},
 			],

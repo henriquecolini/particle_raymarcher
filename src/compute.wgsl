@@ -23,7 +23,7 @@ override BUNDLE_SIZE: i32 = 32;
 var<storage> particles: array<Particle>;
 
 @group(0) @binding(1)
-var sdf_tex_write: texture_storage_3d<rgba16float, write>;
+var sdf_tex_write: texture_storage_3d<r32float, write>;
 
 @group(0) @binding(2)
 var sdf_tex_read: texture_3d<f32>;

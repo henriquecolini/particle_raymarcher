@@ -35,9 +35,6 @@ var<uniform> u_camera: Camera;
 var<uniform> u_time: Time;
 
 @group(0) @binding(3)
-var sdf_sampler: sampler;
-
-@group(0) @binding(4)
 var sdf_tex_read: texture_3d<f32>;
 
 // @group(3) @binding(0)
@@ -80,14 +77,44 @@ fn screen_to_world(pos: vec3<f32>) -> vec3<f32> {
     return world_pos;
 }
 
+fn sample_linear_3d(
+    tex: texture_3d<f32>,
+    uvw: vec3<f32>,
+    tex_size: vec3<u32>
+) -> f32 {
+    let size_f = vec3<f32>(tex_size);
+    let pos = uvw * size_f - vec3<f32>(0.5); // Shift to texel space
+    let base = vec3<i32>(floor(pos));        // Integer base coordinate
+    let frac = fract(pos);                   // Interpolation weights
+
+    // Load 8 surrounding voxels
+    let c000 = textureLoad(tex, clamp(base + vec3(0, 0, 0), vec3<i32>(0,0,0), vec3<i32>(tex_size)), 0).r;
+    let c100 = textureLoad(tex, clamp(base + vec3(1, 0, 0), vec3<i32>(0,0,0), vec3<i32>(tex_size)), 0).r;
+    let c010 = textureLoad(tex, clamp(base + vec3(0, 1, 0), vec3<i32>(0,0,0), vec3<i32>(tex_size)), 0).r;
+    let c110 = textureLoad(tex, clamp(base + vec3(1, 1, 0), vec3<i32>(0,0,0), vec3<i32>(tex_size)), 0).r;
+    let c001 = textureLoad(tex, clamp(base + vec3(0, 0, 1), vec3<i32>(0,0,0), vec3<i32>(tex_size)), 0).r;
+    let c101 = textureLoad(tex, clamp(base + vec3(1, 0, 1), vec3<i32>(0,0,0), vec3<i32>(tex_size)), 0).r;
+    let c011 = textureLoad(tex, clamp(base + vec3(0, 1, 1), vec3<i32>(0,0,0), vec3<i32>(tex_size)), 0).r;
+    let c111 = textureLoad(tex, clamp(base + vec3(1, 1, 1), vec3<i32>(0,0,0), vec3<i32>(tex_size)), 0).r;
+
+    // Interpolate
+    let c00 = mix(c000, c100, frac.x);
+    let c10 = mix(c010, c110, frac.x);
+    let c01 = mix(c001, c101, frac.x);
+    let c11 = mix(c011, c111, frac.x);
+
+    let c0 = mix(c00, c10, frac.y);
+    let c1 = mix(c01, c11, frac.y);
+
+    let c = mix(c0, c1, frac.z);
+
+    return c;
+}
+
+
 fn sdf(p: vec3<f32>) -> f32 {
     let norm = world_to_ubox(p);
-    return textureSample(sdf_tex_read, sdf_sampler, norm).r;
-    // var total = 0.0;
-    // if p.x < 0 || p.y < 0 || p.z < 0 || p.x > 1 || p.y > 1 || p.z > 1 {
-    //     total += sdf_box(p, vec3(1.0,1.0,1.0));
-    // }
-    // return total + textureSample(sdf_tex_read, sdf_sampler, p).r;
+    return sample_linear_3d(sdf_tex_read, norm, textureDimensions(sdf_tex_read));
 }
 
 //https://tavianator.com/2015/ray_box_nan.html
