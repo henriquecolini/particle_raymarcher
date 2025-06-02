@@ -17,11 +17,10 @@ struct Particle {
     radius: f32
 }
 
-// Must be the same as the one in particle.rs
-const BUNDLE_SIZE = 32;
+override BUNDLE_SIZE: i32 = 32;
 
 @group(0) @binding(0)
-var<storage> particles: array<Particle, BUNDLE_SIZE>;
+var<storage> particles: array<Particle>;
 
 @group(0) @binding(1)
 var sdf_tex_write: texture_storage_3d<rgba16float, write>;

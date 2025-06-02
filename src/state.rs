@@ -231,7 +231,10 @@ impl State {
 				layout: Some(&compute_pipeline_layout),
 				module: &compute_shader,
 				entry_point: Some("cs_clear"),
-				compilation_options: Default::default(),
+				compilation_options: wgpu::PipelineCompilationOptions {
+					constants: &[("BUNDLE_SIZE", particle::BUNDLE_SIZE as f64)],
+					..Default::default()
+				},
 				cache: Default::default(),
 			});
 
@@ -241,7 +244,10 @@ impl State {
 				layout: Some(&compute_pipeline_layout),
 				module: &compute_shader,
 				entry_point: Some("cs_sdf"),
-				compilation_options: Default::default(),
+				compilation_options: wgpu::PipelineCompilationOptions {
+					constants: &[("BUNDLE_SIZE", particle::BUNDLE_SIZE as f64)],
+					..Default::default()
+				},
 				cache: Default::default(),
 			});
 
